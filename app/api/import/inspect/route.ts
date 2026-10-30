@@ -98,7 +98,7 @@ export async function POST(request: Request) {
         realm,
         script: fetched.finalUrl,
         bp: bp ?? [],
-        name: guessScriptName(fetched.finalUrl),
+        name: fetched.name || guessScriptName(fetched.finalUrl),
         content: fetched.content,
         content_type: fetched.contentType,
         bytes: fetched.bytes,

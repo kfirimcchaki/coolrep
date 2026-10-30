@@ -12,7 +12,7 @@ endpoint contract (verified vs. inferred) is in [`docs/API.md`](docs/API.md).
 
 ```
 Next.js 15 (App Router, React 19, TypeScript)  ·  26 server routes  ·  zero native deps
-77 HTTP contract tests  ·  132 static-build tests  ·  JSON-file database with atomic writes
+78 HTTP contract tests  ·  132 static-build tests  ·  JSON-file database with atomic writes
 OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs timestamps
 ```
 
@@ -270,9 +270,9 @@ microsecond timestamps, UUIDv7 shape, ownership rules, share links, publish flow
 
 ```bash
 npm run build && npm start &
-node scripts/smoke.mjs            # 51 assertions against the real HTTP API
+node scripts/smoke.mjs            # 78 assertions against the real HTTP API
 
-node scripts/test-static.mjs      # 61 assertions: in-browser backend, jsdom render of every
+node scripts/test-static.mjs      # 132 assertions: in-browser backend, jsdom render of every
                                   # SPA route, and the GitHub Pages loader
 ```
 

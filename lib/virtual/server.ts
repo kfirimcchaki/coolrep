@@ -690,7 +690,7 @@ export class VirtualServer {
           realm,
           script: fetched.finalUrl,
           bp: bp ?? [],
-          name: (await import('../invite')).guessScriptName(fetched.finalUrl),
+          name: fetched.name || (await import('../invite')).guessScriptName(fetched.finalUrl),
           content: fetched.content,
           content_type: fetched.contentType,
           bytes: fetched.bytes,

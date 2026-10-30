@@ -1,6 +1,6 @@
 /* NT Scripting service worker — offline support for the static build.
    The cache name carries a build stamp, so every deploy replaces stale assets. */
-const CACHE = 'nt-scripting-20261030134056';
+const CACHE = 'nt-scripting-20261030134356';
 const PRECACHE = [
   './',
   './index.html',

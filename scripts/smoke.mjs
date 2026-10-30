@@ -252,6 +252,8 @@ async function main() {
     `got ${inspected.status} ${inspected.text.slice(0, 90)}`);
   check('inspect returns the source it fetched',
     inspected.json?.content === 'function tick() end\n' && inspected.json?.script_id === scriptId);
+  check('inspect picks the script name from the source headers',
+    inspected.json?.name === 'Smoke Script v2', inspected.json?.name);
   check('inspect reports the revision and expiry',
     inspected.json?.revision_id === claims?.revision_id && typeof inspected.json?.expires_at === 'string');
 

@@ -65,6 +65,8 @@ export interface FetchedScript {
   bytes: number;
   finalUrl: string;
   status: number;
+  /** `X-Script-Name` when the source publishes one (our content endpoint does). */
+  name: string | null;
 }
 
 /** Reads a content URL, unwrapping `{content}`/`{code}` JSON responses. */
@@ -119,12 +121,23 @@ export async function fetchScriptContent(
       }
     }
 
+    let name: string | null = null;
+    const declaredName = response.headers.get('x-script-name');
+    if (declaredName) {
+      try {
+        name = decodeURIComponent(declaredName);
+      } catch {
+        name = declaredName;
+      }
+    }
+
     return {
       content,
       contentType,
       bytes: content.length,
       finalUrl: response.url || url.toString(),
       status: response.status,
+      name,
     };
   } finally {
     clearTimeout(timer);

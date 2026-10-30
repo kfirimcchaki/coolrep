@@ -15,10 +15,10 @@ codebase**:
 | Null’s Connect | 302 → provider, `id_token` in the fragment | provider screen rendered inline, HS256 `id_token` minted with Web Crypto |
 | Routing | Next.js App Router (SSR) | client router over `history.pushState` |
 
-Both are exercised by tests: `scripts/smoke.mjs` drives the HTTP API (51 assertions) and
+Both are exercised by tests: `scripts/smoke.mjs` drives the HTTP API (78 assertions) and
 `scripts/test-static.mjs` drives the in-browser backend, the gist transport, renders every SPA
 route in jsdom and verifies the published artifact — loader, manifest, icons, service worker
-(103 assertions).
+(132 assertions).
 
 ---
 
