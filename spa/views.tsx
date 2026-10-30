@@ -11,6 +11,8 @@ import ScriptCard, { FavoriteButton } from '../app/components/ScriptCard';
 import ScriptsBrowser from '../app/components/ScriptsBrowser';
 import ScriptEditor from '../app/components/ScriptEditor';
 import StartBattleButton from '../app/components/StartBattleButton';
+import InviteButton from '../app/components/InviteButton';
+import ImportInvite from '../app/components/ImportInvite';
 import PublishButton from '../app/components/PublishButton';
 import PasswordSettings from '../app/components/PasswordSettings';
 import CopyField from '../app/components/CopyField';
@@ -99,6 +101,7 @@ export function ScriptDetailView({ id }: { id: string }) {
             {isOwner ? (
               <>
                 <StartBattleButton scriptId={detail.script_id} />
+                {detail.published_at ? <InviteButton scriptId={detail.script_id} /> : null}
                 <Link className="btn" href={`/scripts/${detail.script_id}/edit`}>
                   Edit code
                 </Link>
@@ -612,6 +615,28 @@ export function BattleView({ token }: { token: string }) {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Import from invite                                                  */
+/* ------------------------------------------------------------------ */
+
+export function ImportView() {
+  const initialInvite = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('invite') ?? undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+
+  return (
+    <div className="page">
+      <div className="container" style={{ maxWidth: 860 }}>
+        <ImportInvite initialInvite={initialInvite} />
       </div>
     </div>
   );

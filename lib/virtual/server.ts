@@ -8,6 +8,18 @@ import type {
 } from '../types';
 import { claimsForEmail, hashPassword, isUuid, nowIso, opaqueToken, signIdToken, uuidv7, verifyIdToken, verifyPassword } from './crypto';
 import { VirtualDatabase } from './db';
+import {
+  buildInvite,
+  DEFAULT_INVITE_TTL_SECONDS,
+  encodeInvite,
+  InviteError,
+  inviteDeepLink,
+  inviteImportUrl,
+  serialiseInvite,
+  signContentToken,
+  verifyContentToken,
+} from '../invite';
+import { fetchScriptContent, ImportFetchError } from '../import-fetch';
 
 /**
  * A complete, in-browser implementation of the platform REST API.
@@ -22,11 +34,16 @@ import { VirtualDatabase } from './db';
 export interface VirtualResponse {
   status: number;
   body: unknown;
+  /** Raw body for endpoints that answer text (the invite content URL). */
+  text?: string;
+  contentType?: string;
 }
 
 export interface VirtualRequestInit {
   body?: unknown;
   token?: string | null;
+  /** Absolute origin used when minting invite URLs (defaults to location.origin). */
+  origin?: string;
 }
 
 class ApiError extends Error {
@@ -103,6 +120,12 @@ function toReleaseSummary(release: ReleaseRow) {
 
 function canView(script: ScriptRow, viewerId: string | null): boolean {
   return script.published_at !== null || script.author_uuid === viewerId;
+}
+
+function requestOrigin(init: VirtualRequestInit): string {
+  if (init.origin) return init.origin.replace(/\/+$/, '');
+  if (typeof location === 'undefined') return '';
+  return `${location.origin}${basePath()}`;
 }
 
 export class VirtualServer {
@@ -484,6 +507,90 @@ export class VirtualServer {
         };
       }
 
+      if (rest[2] === 'content' && rest.length === 3) {
+        if (method !== 'GET' && method !== 'HEAD') throw new ApiError(405, 'Method not allowed', null);
+        const tokenParam = q.get('token');
+        if (!tokenParam) throw new ApiError(401, 'Unauthorized', null);
+        let claims;
+        try {
+          claims = await verifyContentToken(tokenParam);
+        } catch (error) {
+          if (error instanceof InviteError) throw new ApiError(error.status, error.message);
+          throw error;
+        }
+        if (claims.script_id !== script.script_id) throw new ApiError(403, 'Token does not match this script');
+        if (script.published_at === null) throw new ApiError(404, 'Script not found');
+        const release = data.releases.find(
+          (row) => row.id === claims.revision_id && row.script_id === script.script_id,
+        );
+        if (!release) throw new ApiError(404, 'Revision not found');
+
+        if (q.get('format') === 'json') {
+          return {
+            status: 200,
+            body: {
+              script_id: script.script_id,
+              revision_id: release.id,
+              name: script.name,
+              description: script.description,
+              content: release.code,
+              created_at: release.created_at,
+              expires_at: new Date(claims.exp * 1000).toISOString(),
+            },
+          };
+        }
+        return { status: 200, body: null, text: release.code, contentType: 'text/plain; charset=utf-8' };
+      }
+
+      if (rest[2] === 'invite' && rest.length === 3) {
+        if (method !== 'POST') throw new ApiError(405, 'Method not allowed', null);
+        const user = this.requireUser(token);
+        if (script.published_at === null && script.author_uuid !== user.user_id) {
+          throw new ApiError(403, 'Only the author can invite to a draft');
+        }
+        const releaseId = int(body.release_id, 'release_id', { min: 1 });
+        const expiresIn = int(body.expires_in, 'expires_in', { min: 60, max: 60 * 60 * 24 * 30 });
+        const releases = data.releases
+          .filter((row) => row.script_id === script.script_id)
+          .sort((a, b) => b.id - a.id);
+        const release = releaseId ? releases.find((row) => row.id === releaseId) : releases[0];
+        if (!release) {
+          throw new ApiError(404, releaseId ? 'Release not found' : 'Script has no published revision');
+        }
+
+        const ttl = expiresIn ?? DEFAULT_INVITE_TTL_SECONDS;
+        const contentToken = await signContentToken({
+          script_id: script.script_id,
+          revision_id: release.id,
+          ttlSeconds: ttl,
+        });
+        const origin = requestOrigin(init);
+        const contentUrl = `${origin}/api/scripts/${script.script_id}/content?token=${contentToken}`;
+        const invite = buildInvite({ contentUrl, realm: typeof body.realm === 'string' ? body.realm : undefined, bp: body.bp });
+        const expiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + ttl * 1000).toISOString();
+        return {
+          status: 201,
+          body: {
+            realm: invite.realm,
+            script: invite.script,
+            bp: invite.bp,
+            invite,
+            payload: serialiseInvite(invite),
+            invite_b64: encodeInvite(invite),
+            invite_url: inviteImportUrl(invite, origin),
+            deep_link: inviteDeepLink(invite),
+            token: contentToken,
+            content_url: contentUrl,
+            script_id: script.script_id,
+            revision_id: release.id,
+            name: script.name,
+            realm_name: invite.realm,
+            expires_at: expiresAt,
+            created_at: nowIso(),
+          },
+        };
+      }
+
       if (rest[2] === 'favorite') {
         const user = this.requireUser(token);
         if (method !== 'POST' && method !== 'DELETE') throw new ApiError(405, 'Method not allowed', null);
@@ -516,6 +623,83 @@ export class VirtualServer {
           return { status: 200, body: payload };
         }
       }
+    }
+
+    /* --------------------------- import --------------------------- */
+    if (rest[0] === 'import' && rest[1] === 'inspect') {
+      if (method !== 'POST') throw new ApiError(405, 'Method not allowed', null);
+      const inviteRaw = typeof body.invite === 'string' ? body.invite : undefined;
+      const urlRaw = typeof body.url === 'string' ? body.url : undefined;
+      if (!inviteRaw && !urlRaw) throw new ApiError(400, 'Provide an invite payload or a script URL');
+
+      let scriptUrl: string;
+      let realm = 'experiment:scripts';
+      let bp: number[] | null = null;
+      if (inviteRaw) {
+        let invite;
+        try {
+          invite = (await import('../invite')).decodeInvite(inviteRaw);
+        } catch (error) {
+          if (error instanceof InviteError) throw new ApiError(400, error.message);
+          throw error;
+        }
+        scriptUrl = invite.script;
+        realm = invite.realm;
+        bp = invite.bp;
+      } else {
+        try {
+          scriptUrl = (await import('../invite')).validateInvite({ realm, script: urlRaw!, bp: [] }).script;
+        } catch (error) {
+          if (error instanceof InviteError) throw new ApiError(400, error.message);
+          throw error;
+        }
+      }
+
+      let fetched;
+      try {
+        fetched = await fetchScriptContent(scriptUrl, { allowLocal: true });
+      } catch (error) {
+        if (error instanceof ImportFetchError) throw new ApiError(error.status, error.message);
+        throw error;
+      }
+
+      let scriptId: string | null = null;
+      let revisionId: number | null = null;
+      let expiresAt: string | null = null;
+      try {
+        const parsed = new URL(fetched.finalUrl);
+        const match = parsed.pathname.match(/\/api\/scripts\/([0-9a-f-]{36})\/content/i);
+        if (match) scriptId = match[1];
+        const contentToken = parsed.searchParams.get('token');
+        if (contentToken && contentToken.split('.').length === 3) {
+          const b64 = contentToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+          const claims = JSON.parse(atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '='))) as {
+            revision_id?: number;
+            exp?: number;
+          };
+          if (typeof claims.revision_id === 'number') revisionId = claims.revision_id;
+          if (typeof claims.exp === 'number') expiresAt = new Date(claims.exp * 1000).toISOString();
+        }
+      } catch {
+        /* not a tokenised URL */
+      }
+
+      return {
+        status: 200,
+        body: {
+          realm,
+          script: fetched.finalUrl,
+          bp: bp ?? [],
+          name: (await import('../invite')).guessScriptName(fetched.finalUrl),
+          content: fetched.content,
+          content_type: fetched.contentType,
+          bytes: fetched.bytes,
+          script_id: scriptId,
+          revision_id: revisionId,
+          expires_at: expiresAt,
+          imported_by: this.viewer(token)?.username ?? null,
+        },
+      };
     }
 
     /* ------------------------------ share ------------------------------ */

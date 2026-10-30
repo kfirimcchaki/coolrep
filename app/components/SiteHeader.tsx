@@ -17,6 +17,9 @@ export default async function SiteHeader() {
           <Link className="nav-link" href="/scripts">
             Scripts
           </Link>
+          <Link className="nav-link" href="/import">
+            Import
+          </Link>
           {user ? (
             <Link className="nav-link" href={`/users/${user.user_id}`}>
               My scripts

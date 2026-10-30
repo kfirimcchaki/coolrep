@@ -223,3 +223,19 @@ Access-Control-Request-Method: GET
 | 10 | Editor / draft / publish workflow | implemented | issue #12 description |
 
 Run `node scripts/smoke.mjs` to assert 51 of these behaviours over real HTTP.
+
+
+---
+
+## Invites (reconstructed from invite payloads)
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `POST` | `/api/scripts/{uuid}/invite` | signed-in; returns `{realm, script, bp}` + token + deep link |
+| `GET` | `/api/scripts/{uuid}/content?token=…` | invite-token authorised source, `text/plain` (`?format=json` for an object) |
+| `HEAD` | `/api/scripts/{uuid}/content?token=…` | liveness probe for an invite |
+| `POST` | `/api/import/inspect` | read a foreign invite and preview its source |
+
+The token is `HS256({script_id, revision_id, exp})`, header `{"typ":"JWT","alg":"HS256"}` —
+byte-identical to the tokens observed inside real invites. See
+[`INVITES.md`](INVITES.md) for the full contract.

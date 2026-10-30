@@ -168,6 +168,112 @@ async function main() {
   const foreignPatch = await call(`/api/scripts/${scriptId}`, { method: 'PATCH', body: { name: 'nope' } });
   check('PATCH without session → 401', foreignPatch.status === 401, `got ${foreignPatch.status}`);
 
+  /* ---------- invites: content tokens + cross-site borrowing ---------- */
+  const invite = await call(`/api/scripts/${scriptId}/invite`, { method: 'POST', cookie, body: {} });
+  check('POST /api/scripts/{id}/invite → 201', invite.status === 201, `got ${invite.status} ${invite.text.slice(0, 90)}`);
+  check('invite document has realm/script/bp',
+    invite.json?.realm === 'experiment:scripts' &&
+    typeof invite.json?.script === 'string' &&
+    Array.isArray(invite.json?.bp) && invite.json.bp.length === 32);
+  check('invite.script points at this deployment\'s content endpoint',
+    invite.json?.script?.includes(`/api/scripts/${scriptId}/content?token=`),
+    invite.json?.script?.slice(0, 110));
+  check('invite payload round-trips to the same document',
+    (() => {
+      try {
+        const parsed = JSON.parse(invite.json?.payload ?? '');
+        return parsed.realm === invite.json.realm && parsed.script === invite.json.script &&
+          JSON.stringify(parsed.bp) === JSON.stringify(invite.json.bp);
+      } catch {
+        return false;
+      }
+    })());
+  const tokenParts = String(invite.json?.token ?? '').split('.');
+  check('content token is a three-part JWT', tokenParts.length === 3);
+  check('token header is {"typ":"JWT","alg":"HS256"}',
+    Buffer.from(tokenParts[0] ?? '', 'base64').toString() === '{"typ":"JWT","alg":"HS256"}',
+    Buffer.from(tokenParts[0] ?? '', 'base64').toString());
+  const claims = (() => {
+    try {
+      return JSON.parse(Buffer.from(tokenParts[1] ?? '', 'base64').toString());
+    } catch {
+      return null;
+    }
+  })();
+  check('token claims are { script_id, revision_id, exp }',
+    claims?.script_id === scriptId && Number.isInteger(claims?.revision_id) && Number.isInteger(claims?.exp),
+    JSON.stringify(claims));
+  check('bp matches the observed battle-parameter vector',
+    invite.json?.bp?.[6] === 254 && invite.json?.bp?.[9] === -600 && invite.json?.bp?.at(-1) === 1);
+  check('invite default lifetime is 15 minutes', claims?.exp - claims?.iat === 900, String(claims?.exp - claims?.iat));
+
+  const content = await call(`/api/scripts/${scriptId}/content?token=${invite.json.token}`, { raw: true });
+  check('GET content with the invite token → 200 text/plain',
+    content.status === 200 && (content.headers.get('content-type') ?? '').includes('text/plain'),
+    `${content.status} ${content.headers.get('content-type')}`);
+  check('content is the published revision source', content.text === 'function tick() end\n', JSON.stringify(content.text));
+  check('content carries the revision headers',
+    content.headers.get('x-script-id') === scriptId && content.headers.get('x-revision-id') === String(claims?.revision_id));
+
+  const contentJson = await call(`/api/scripts/${scriptId}/content?format=json&token=${invite.json.token}`);
+  check('content?format=json → 200 with the same source',
+    contentJson.status === 200 && contentJson.json?.content === 'function tick() end\n' &&
+    contentJson.json?.script_id === scriptId);
+  const contentHead = await call(`/api/scripts/${scriptId}/content?token=${invite.json.token}`, { method: 'HEAD' });
+  check('HEAD content with a valid token → 200', contentHead.status === 200, `got ${contentHead.status}`);
+
+  const contentAnon = await call(`/api/scripts/${scriptId}/content`, { raw: true });
+  check('content without a token → 401 with an empty body', contentAnon.status === 401 && contentAnon.text === '',
+    `${contentAnon.status} "${contentAnon.text}"`);
+
+  const tampered = `${tokenParts[0]}.${tokenParts[1]}.${(tokenParts[2] ?? '').slice(0, -2)}AA`;
+  const contentBad = await call(`/api/scripts/${scriptId}/content?token=${tampered}`);
+  check('content with a forged signature → 401', contentBad.status === 401, `got ${contentBad.status}`);
+
+  const listed = await call('/api/scripts?limit=10', { cookie });
+  const otherId = listed.json?.scripts?.map((row) => row.script_id).find((id) => id !== scriptId);
+  if (otherId) {
+    const mismatched = await call(`/api/scripts/${otherId}/content?token=${invite.json.token}`);
+    check('a token is bound to its own script → 403', mismatched.status === 403, `got ${mismatched.status}`);
+  }
+
+  const inviteAnon = await call(`/api/scripts/${scriptId}/invite`, { method: 'POST', body: {} });
+  check('POST invite without a session → 401', inviteAnon.status === 401, `got ${inviteAnon.status}`);
+  const inviteGet = await call(`/api/scripts/${scriptId}/invite`);
+  check('GET invite → 405', inviteGet.status === 405, `got ${inviteGet.status}`);
+
+  /* ---------- borrowing a script from another site ---------- */
+  const inspected = await call('/api/import/inspect', {
+    method: 'POST',
+    cookie,
+    body: { invite: invite.json.payload },
+  });
+  check('POST /api/import/inspect reads the invite payload', inspected.status === 200,
+    `got ${inspected.status} ${inspected.text.slice(0, 90)}`);
+  check('inspect returns the source it fetched',
+    inspected.json?.content === 'function tick() end\n' && inspected.json?.script_id === scriptId);
+  check('inspect reports the revision and expiry',
+    inspected.json?.revision_id === claims?.revision_id && typeof inspected.json?.expires_at === 'string');
+
+  const inspectedLink = await call('/api/import/inspect', {
+    method: 'POST',
+    cookie,
+    body: { invite: invite.json.deep_link },
+  });
+  check('inspect also accepts the deep link form', inspectedLink.status === 200 && inspectedLink.json?.content === 'function tick() end\n');
+
+  const inspectedBase64 = await call('/api/import/inspect', {
+    method: 'POST',
+    cookie,
+    body: { invite: invite.json.invite_b64 },
+  });
+  check('inspect also accepts the base64 form', inspectedBase64.status === 200);
+
+  const inspectedBad = await call('/api/import/inspect', { method: 'POST', cookie, body: { invite: 'hello there' } });
+  check('inspect rejects a non-invite → 400', inspectedBad.status === 400, `got ${inspectedBad.status}`);
+  const inspectGet = await call('/api/import/inspect');
+  check('GET /api/import/inspect → 405', inspectGet.status === 405, `got ${inspectGet.status}`);
+
   /* ---------- favorites ---------- */
   const fav = await call(`/api/scripts/${scriptId}/favorite`, { method: 'POST', cookie });
   check('POST /api/scripts/{id}/favorite → is_favorite true', fav.status === 200 && fav.json?.is_favorite === true);

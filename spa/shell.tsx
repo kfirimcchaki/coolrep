@@ -35,6 +35,9 @@ export function Header() {
           <Link className={`nav-link${path.startsWith('/scripts') ? ' active' : ''}`} href="/scripts">
             Scripts
           </Link>
+          <Link className={`nav-link${path.startsWith('/import') ? ' active' : ''}`} href="/import">
+            Import
+          </Link>
           {user ? (
             <Link className="nav-link" href={`/users/${user.user_id}`}>
               My scripts

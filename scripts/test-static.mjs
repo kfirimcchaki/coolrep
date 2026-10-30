@@ -156,6 +156,61 @@ async function contractTests() {
   check('GET /api/share/{token} resolves script + release',
     resolved.status === 200 && resolved.body.script.script_id === scriptId);
 
+  /* ---------- invites: content tokens + borrowed scripts ---------- */
+  const invite = await call('POST', `/api/scripts/${scriptId}/invite`, {});
+  check('POST /api/scripts/{id}/invite → 201', invite.status === 201, `got ${invite.status}`);
+  check('the invite matches the server-build document shape',
+    invite.body?.realm === 'experiment:scripts' && Array.isArray(invite.body?.bp) && invite.body.bp.length === 32 &&
+    invite.body?.script?.includes(`/api/scripts/${scriptId}/content?token=`),
+    JSON.stringify(invite.body?.realm));
+  check('the payload mirrors realm/script/bp',
+    (() => {
+      try {
+        const parsed = JSON.parse(invite.body?.payload ?? '');
+        return parsed.script === invite.body.script && JSON.stringify(parsed.bp) === JSON.stringify(invite.body.bp);
+      } catch {
+        return false;
+      }
+    })());
+
+  const parsedUrl = new URL(invite.body.script, 'http://virtual.local');
+  const contentPath = `${parsedUrl.pathname}${parsedUrl.search}`;
+  const content = await server.handle('GET', contentPath, {});
+  check('GET /api/scripts/{id}/content?token → 200 text',
+    content.status === 200 && typeof content.text === 'string' && content.contentType?.includes('text/plain'),
+    `got ${content.status}`);
+  check('content is the published revision source', content.text === 'function tick() end\n', JSON.stringify(content.text));
+
+  const contentJson = await server.handle('GET', `${contentPath}&format=json`, {});
+  check('content?format=json → 200 with the source',
+    contentJson.status === 200 && contentJson.body?.content === 'function tick() end\n');
+
+  const contentAnon = await server.handle('GET', `/api/scripts/${scriptId}/content`, {});
+  check('content without a token → 401 with an empty body',
+    contentAnon.status === 401 && contentAnon.body === null);
+
+  const forgedPath = `${parsedUrl.pathname}?token=${invite.body.token.slice(0, -2)}AA`;
+  const contentForged = await server.handle('GET', forgedPath, {});
+  check('content with a forged signature → 401', contentForged.status === 401, `got ${contentForged.status}`);
+
+  const otherScript = await call('POST', '/api/scripts', { name: 'Other', code: 'x' });
+  await call('POST', `/api/scripts/${otherScript.body.script_id}/publish`, {});
+  const boundPath = `/api/scripts/${otherScript.body.script_id}/content?token=${invite.body.token}`;
+  const mismatched = await server.handle('GET', boundPath, {});
+  check('a token is bound to its own script → 403', mismatched.status === 403, `got ${mismatched.status}`);
+
+  const inviteAnon = await server.handle('POST', `/api/scripts/${scriptId}/invite`, {});
+  check('POST invite anonymously → 401', inviteAnon.status === 401);
+  const inviteGet = await server.handle('GET', `/api/scripts/${scriptId}/invite`, {});
+  check('GET invite → 405', inviteGet.status === 405);
+
+  const inspectGet = await server.handle('GET', '/api/import/inspect', {});
+  check('GET /api/import/inspect → 405', inspectGet.status === 405);
+  const inspectEmpty = await call('POST', '/api/import/inspect', {});
+  check('inspect without an invite → 400', inspectEmpty.status === 400);
+
+  await call('DELETE', `/api/scripts/${otherScript.body.script_id}`);
+
   const code = await call('PUT', `/api/scripts/${scriptId}/code`, { code: 'function tick() log("x") end' });
   check('PUT code → 200', code.status === 200 && code.body.code.includes('log'));
 
@@ -349,13 +404,18 @@ async function renderTests() {
     settings.text.includes('Settings') && settings.text.includes('Sign in methods') &&
     settings.text.includes("Null's Connect"));
 
+  const importer = await renderRoute('/import', { localStorageSeed: seedStorage });
+  check('/import renders the invite importer',
+    importer.text.includes('Import from an invite') && importer.text.includes('Read script'),
+    importer.text.slice(0, 120));
+
   const editor = await renderRoute('/scripts/new', { token, localStorageSeed: seedStorage });
   check('editor renders for a signed-in user',
     editor.text.includes('New script') && editor.text.includes('Save & publish'));
 
   check('no runtime errors on signed-in routes',
-    [...list.errors, ...profile.errors, ...settings.errors, ...editor.errors].length === 0,
-    [...list.errors, ...profile.errors].slice(0, 2).join(' | '));
+    [...list.errors, ...profile.errors, ...settings.errors, ...editor.errors, ...importer.errors].length === 0,
+    [...list.errors, ...profile.errors, ...importer.errors].slice(0, 2).join(' | '));
 }
 
 
@@ -641,6 +701,111 @@ async function loaderTests() {
   check('the published root ships the bundle', await readFile(path.join(root, 'assets/app.js'), 'utf8').then(() => true).catch(() => false));
 }
 
+
+/* ------------------------------------------------------------------ */
+/* 7. Invite documents + tokens (shared module)                        */
+/* ------------------------------------------------------------------ */
+
+async function inviteCodecTests() {
+  console.log('\nInvite format\n');
+  const file = await bundle('lib/invite.ts', 'invite.mjs');
+  const invite = await import(pathToUrl(file));
+
+  const sample = {
+    realm: 'experiment:scripts',
+    script:
+      'https://scripting.nulls.gg/api/scripts/01a1796b-7367-7d34-8f74-a49118c053cb/content?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzY3JpcHRfaWQiOiIwMWExNzk2Yi03MzY3LTdkMzQtOGY3NC1hNDkxMThjMDUzY2IiLCJyZXZpc2lvbl9pZCI6MTU0ODAsImV4cCI6MTc5MzM2NzQ2Nn0.BNja9iuGefxEAj2B3UUJ0Ycj_94-UHbbCWNqOWBanEI',
+    bp: [0, 0, 0, 0, 0, 0, 254, 1, 1, -600, 1000, -20, 20, 1, 3, 0, 1, 1, 1, 1000, 1, 0, 0, 0, 100, 0, 0, 1, 1000, 1000, 1000, 1],
+  };
+
+  const fromJson = invite.decodeInvite(JSON.stringify(sample, null, 2));
+  check('a pretty-JSON invite decodes', fromJson.script === sample.script && fromJson.bp.length === 32);
+  check('the observed bp vector is preserved',
+    fromJson.bp[6] === 254 && fromJson.bp[9] === -600 && fromJson.bp.at(-1) === 1);
+
+  check('base64 invites round-trip', invite.decodeInvite(invite.encodeInvite(sample)).script === sample.script);
+  check('deep links round-trip', invite.decodeInvite(invite.inviteDeepLink(sample)).script === sample.script);
+  check('percent-encoded documents decode',
+    invite.decodeInvite(encodeURIComponent(JSON.stringify(sample))).script === sample.script);
+
+  let rejected = false;
+  try {
+    invite.decodeInvite('hello there');
+  } catch (error) {
+    rejected = error instanceof invite.InviteError;
+  }
+  check('junk is rejected with an InviteError', rejected);
+
+  check('non-http script URLs are refused', (() => {
+    try {
+      invite.validateInvite({ realm: 'x', script: 'javascript:alert(1)', bp: [] });
+      return false;
+    } catch {
+      return true;
+    }
+  })());
+  check('a URL without a token is refused', (() => {
+    try {
+      invite.validateInvite({ realm: 'x', script: 'https://example.com/script.lua', bp: [] });
+      return false;
+    } catch {
+      return true;
+    }
+  })());
+
+  const token = await invite.signContentToken({
+    script_id: '01a1796b-7367-7d34-8f74-a49118c053cb',
+    revision_id: 15480,
+  });
+  const [header, payload] = token.split('.');
+  check('tokens use the observed header',
+    Buffer.from(header, 'base64').toString() === '{"typ":"JWT","alg":"HS256"}',
+    Buffer.from(header, 'base64').toString());
+  const claims = JSON.parse(Buffer.from(payload, 'base64').toString());
+  check('tokens carry script_id / revision_id / exp',
+    claims.script_id === '01a1796b-7367-7d34-8f74-a49118c053cb' && claims.revision_id === 15480 &&
+    Number.isInteger(claims.exp));
+  check('a freshly signed token verifies',
+    (await invite.verifyContentToken(token)).revision_id === 15480);
+
+  let expiredMessage = '';
+  try {
+    await invite.verifyContentToken(
+      await invite.signContentToken({ script_id: claims.script_id, revision_id: 15480, ttlSeconds: -5 }),
+    );
+  } catch (error) {
+    expiredMessage = error.message;
+  }
+  check('expired tokens are refused', expiredMessage === 'Token expired', expiredMessage);
+
+  let forgedMessage = '';
+  try {
+    await invite.verifyContentToken(`${header}.${payload}.${'A'.repeat(43)}`);
+  } catch (error) {
+    forgedMessage = error.message;
+  }
+  check('forged signatures are refused', forgedMessage === 'Invalid token signature', forgedMessage);
+
+  let foreignMessage = '';
+  try {
+    await invite.verifyContentToken(token, { secret: 'someone-elses-secret' });
+  } catch (error) {
+    foreignMessage = error.message;
+  }
+  check('a token signed with another secret is refused', foreignMessage === 'Invalid token signature');
+
+  check('bp coercion accepts numeric strings and caps the length',
+    invite.normaliseBp(['1', '2', 3]).join(',') === '1,2,3' &&
+    (() => {
+      try {
+        invite.normaliseBp(new Array(300).fill(1));
+        return false;
+      } catch {
+        return true;
+      }
+    })());
+}
+
 async function main() {
   await writeFile(path.join(tmp, '.keep'), '', 'utf8').catch(async () => {
     await mkdir(tmp, { recursive: true });
@@ -664,6 +829,7 @@ async function main() {
   await gistTests();
   await artifactTests();
   await backendSelectionTests();
+  await inviteCodecTests();
 
   console.log(`\n${passed} passed, ${failures.length} failed`);
   if (failures.length) {

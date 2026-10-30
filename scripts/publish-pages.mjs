@@ -35,6 +35,7 @@ const GENERATED = [
   'register',
   'connect',
   'settings',
+  'import',
 ];
 
 try {

@@ -248,7 +248,8 @@ export async function apiFetch(
     const server = await virtualServer();
     const response = await server.handle(method, path, { body: parsedBody, token: getSessionToken() });
     captureSession(response.body);
-    const text = response.body === null ? '' : JSON.stringify(response.body);
+    const text =
+      response.text ?? (response.body === null ? '' : JSON.stringify(response.body));
     return {
       ok: response.status >= 200 && response.status < 300,
       status: response.status,

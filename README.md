@@ -12,7 +12,7 @@ endpoint contract (verified vs. inferred) is in [`docs/API.md`](docs/API.md).
 
 ```
 Next.js 15 (App Router, React 19, TypeScript)  ·  26 server routes  ·  zero native deps
-51 HTTP contract tests  ·  103 static-build tests  ·  JSON-file database with atomic writes
+77 HTTP contract tests  ·  132 static-build tests  ·  JSON-file database with atomic writes
 OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs timestamps
 ```
 
@@ -26,7 +26,9 @@ OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs 
 | Extra | — | installable PWA, offline shell, deep links |
 | Best for | real multi-user hosting | a live site on GitHub Pages — sharing included |
 
-See [`docs/STATIC.md`](docs/STATIC.md) for the static build in detail.
+See [`docs/STATIC.md`](docs/STATIC.md) for the static build in detail, and
+[`docs/INVITES.md`](docs/INVITES.md) for friendly-battle invites and cross-site script
+borrowing (`{ realm, script, bp }` → signed content URL).
 
 ### Three ways to store the data of the static build
 
@@ -46,6 +48,23 @@ flush to `api.github.com/gists` (1.2 s debounce, queued while offline), and the 
 leaves the browser.
 
 ---
+
+## Friendly-battle invites (cross-site scripts)
+
+A Null's Brawl script-room invite decodes to `{ realm, script, bp }`, where `script` is a
+**content URL that carries its own access token**. This repository speaks that format in both
+directions:
+
+| Direction | Endpoint | What it does |
+| --- | --- | --- |
+| out | `POST /api/scripts/{id}/invite` | mints an HS256 `{script_id, revision_id, exp}` token and returns the invite document, payload, base64 form, deep link and import link |
+| out | `GET /api/scripts/{id}/content?token=…` | serves the published revision as `text/plain` (or JSON with `?format=json`) — no account needed |
+| in | `POST /api/import/inspect` | reads an invite from *any* site, fetches the source and previews it |
+| in (UI) | `/import` | paste the JSON / base64 / `nullsbrawl://` link, then copy the script into your account |
+
+Because the invite only names a URL, the same document works when the `script` field points at
+*this* deployment — that is how another site (or the game) can borrow a script from here.
+Details: [`docs/INVITES.md`](docs/INVITES.md).
 
 ## Quick start
 

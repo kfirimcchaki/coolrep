@@ -5,6 +5,7 @@ import { StaticRouterProvider, useRouterState } from './lib';
 import { ConnectView, HomeView, LoginView, NotFoundView, RegisterView, Shell } from './shell';
 import {
   BattleView,
+  ImportView,
   ReleaseView,
   ScriptDetailView,
   ScriptEditView,
@@ -37,6 +38,7 @@ function Routes() {
   else if (segments[0] === 'register' && segments.length === 1) view = <RegisterView />;
   else if (segments[0] === 'connect' && segments.length === 1) view = <ConnectView />;
   else if (segments[0] === 'settings' && segments.length === 1) view = <SettingsView />;
+  else if (segments[0] === 'import' && segments.length === 1) view = <ImportView />;
   else if (segments[0] === 'scripts' && segments.length === 1) view = <ScriptsView />;
   else if (segments[0] === 'scripts' && segments[1] === 'new') view = <ScriptNewView />;
   else if (segments[0] === 'scripts' && segments.length === 2) view = <ScriptDetailView id={segments[1]} />;
@@ -59,6 +61,7 @@ function documentTitle(segments: string[]): string {
   if (segments[0] === 'register') return 'Create Account · NT Scripting';
   if (segments[0] === 'connect') return 'Null’s Connect · NT Scripting';
   if (segments[0] === 'settings') return 'Settings · NT Scripting';
+  if (segments[0] === 'import') return 'Import an invite · NT Scripting';
   if (segments[0] === 'scripts' && segments[1] === 'new') return 'New script · NT Scripting';
   if (segments[0] === 'scripts' && segments.length === 2) return 'Script · NT Scripting';
   if (segments[0] === 'scripts') return 'Scripts · NT Scripting';

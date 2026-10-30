@@ -6,6 +6,7 @@ import { db, findScript, listReleases, toScriptDetail } from '../../../lib/store
 import { isUuid } from '../../../lib/ids';
 import { FavoriteButton } from '../../components/ScriptCard';
 import StartBattleButton from '../../components/StartBattleButton';
+import InviteButton from '../../components/InviteButton';
 import PublishButton from '../../components/PublishButton';
 
 export const dynamic = 'force-dynamic';

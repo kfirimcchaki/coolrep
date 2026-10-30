@@ -62,7 +62,7 @@ for (const page of ['index.html', '404.html']) {
 // Static routes get a real document so they answer 200 on GitHub Pages;
 // dynamic routes keep their pretty URL through 404.html (the SPA boots there).
 const shell = await readFile(path.join(outDir, 'index.html'), 'utf8');
-for (const route of ['login', 'register', 'connect', 'settings', 'scripts', 'scripts/new']) {
+for (const route of ['login', 'register', 'connect', 'settings', 'import', 'scripts', 'scripts/new']) {
   const dir = path.join(outDir, route);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'index.html'), shell, 'utf8');
