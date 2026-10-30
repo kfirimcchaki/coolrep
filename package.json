@@ -7,9 +7,14 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "seed": "node --experimental-strip-types scripts/seed.ts",
+    "seed": "node scripts/seed.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "reset": "node scripts/reset.mjs"
+    "reset": "node scripts/reset.mjs",
+    "build:static": "node scripts/build-static.mjs",
+    "preview:static": "node scripts/build-static.mjs && node scripts/serve-static.mjs 4173",
+    "test:static": "node scripts/test-static.mjs",
+    "test:api": "node scripts/smoke.mjs",
+    "build:pages": "node scripts/build-static.mjs && node scripts/publish-docs.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -22,6 +27,9 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.3",
     "typescript": "^5.9.3"
   }
 }

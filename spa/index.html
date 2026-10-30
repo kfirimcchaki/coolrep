@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NT Scripting</title>
+    <meta name="theme-color" content="#08090d" />
+    <meta
+      name="description"
+      content="Create and share Lua scripts for friendly battles — an independent recreation of the NT Scripting platform."
+    />
+    <script>
+      /* Resolve the deployment root at runtime so the same artifact works on
+         project pages (/<repo>/), user pages and custom domains (/) alike. */
+      (function () {
+        var repo = '__REPO__';
+        var path = window.location.pathname;
+        var base = repo && (path === '/' + repo || path.indexOf('/' + repo + '/') === 0) ? '/' + repo : '';
+        window.__NT_BASE__ = base;
+
+        var icon = document.createElement('link');
+        icon.rel = 'icon';
+        icon.type = 'image/svg+xml';
+        icon.href = base + '/favicon.svg';
+        document.head.appendChild(icon);
+
+        var css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = base + '/assets/app.css';
+        document.head.appendChild(css);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>NT Scripting needs JavaScript enabled to run.</noscript>
+    <script>
+      (function () {
+        var script = document.createElement('script');
+        script.src = window.__NT_BASE__ + '/assets/app.js';
+        script.async = false;
+        document.body.appendChild(script);
+      })();
+    </script>
+  </body>
+</html>

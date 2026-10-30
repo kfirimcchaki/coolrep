@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { Link, useNav } from '../../lib/app-router';
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 import type { ScriptListItem } from '../../lib/types';
 
 export function StarIcon({ filled }: { filled: boolean }) {
@@ -32,7 +32,7 @@ export function FavoriteButton({
 }) {
   const [favorite, setFavorite] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const router = useRouter();
+  const nav = useNav();
 
   async function toggle(event: React.MouseEvent) {
     event.preventDefault();
@@ -42,14 +42,14 @@ export function FavoriteButton({
     const next = !favorite;
     setFavorite(next);
     try {
-      const response = await fetch(`/api/scripts/${scriptId}/favorite`, {
+      const response = await apiFetch(`/api/scripts/${scriptId}/favorite`, {
         method: next ? 'POST' : 'DELETE',
         credentials: 'same-origin',
       });
       if (!response.ok) {
         setFavorite(!next);
       } else {
-        router.refresh();
+        nav.refresh();
       }
     } catch {
       setFavorite(!next);

@@ -1,10 +1,10 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
+import { useNav } from '../../lib/app-router';
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function LoginForm({ returnTo }: { returnTo: string }) {
-  const router = useRouter();
+  const nav = useNav();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,19 +15,14 @@ export default function LoginForm({ returnTo }: { returnTo: string }) {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ username, password }),
-      });
+      const response = await apiFetch('/api/auth/login', { method: 'POST', body: { username, password } });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         setError(payload.error ?? `Login failed (${response.status})`);
         return;
       }
-      router.push(returnTo);
-      router.refresh();
+      nav.push(returnTo);
+      nav.refresh();
     } catch {
       setError('Network error — please try again');
     } finally {

@@ -1,7 +1,7 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
+import { useNav } from '../../lib/app-router';
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function PublishButton({
   scriptId,
@@ -10,7 +10,7 @@ export default function PublishButton({
   scriptId: string;
   published: boolean;
 }) {
-  const router = useRouter();
+  const nav = useNav();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -19,7 +19,7 @@ export default function PublishButton({
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(`/api/scripts/${scriptId}/publish`, {
+      const response = await apiFetch(`/api/scripts/${scriptId}/publish`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -31,7 +31,7 @@ export default function PublishButton({
         return;
       }
       setDone(true);
-      router.refresh();
+      nav.refresh();
     } catch {
       setError('Network error — please try again');
     } finally {

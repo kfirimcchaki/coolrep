@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SiteHeader from './components/SiteHeader';
+import NextProviders from './components/NextProviders';
 
 export const metadata: Metadata = {
   title: 'NT Scripting',
@@ -20,16 +21,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <SiteHeader />
-        <main>{children}</main>
-        <footer className="footer">
-          <div className="container footer-inner">
-            <span>
-              NT Scripting · independent reimplementation for local/demo use · not affiliated with Null&apos;s
-            </span>
-            <span className="mono-id">API v1 · /api/health</span>
-          </div>
-        </footer>
+        <NextProviders>
+          <SiteHeader />
+          <main>{children}</main>
+          <footer className="footer">
+            <div className="container footer-inner">
+              <span>
+                NT Scripting · independent reimplementation for local/demo use · not affiliated with Null&apos;s
+              </span>
+              <span className="mono-id">API v1 · /api/health</span>
+            </div>
+          </footer>
+        </NextProviders>
       </body>
     </html>
   );

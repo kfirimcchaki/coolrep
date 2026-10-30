@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { Link, useNav } from '../../lib/app-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 import DownloadButton from './DownloadButton';
 
 export interface EditorScript {
@@ -32,7 +32,7 @@ export default function ScriptEditor({
   mode: 'create' | 'update';
   initial?: EditorScript;
 }) {
-  const router = useRouter();
+  const nav = useNav();
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [code, setCode] = useState(initial?.code ?? TEMPLATE);
@@ -54,7 +54,7 @@ export default function ScriptEditor({
         }
 
         if (mode === 'create') {
-          const response = await fetch('/api/scripts', {
+          const response = await apiFetch('/api/scripts', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
@@ -67,26 +67,26 @@ export default function ScriptEditor({
           }
           const id = payload.script_id as string;
           if (publishAfter) {
-            await fetch(`/api/scripts/${id}/publish`, {
+            await apiFetch(`/api/scripts/${id}/publish`, {
               method: 'POST',
               credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({}),
             });
           }
-          router.replace(`/scripts/${id}/edit`);
+          nav.replace(`/scripts/${id}/edit`);
           return;
         }
 
         const id = initial!.script_id;
         const [codeResponse, metaResponse] = await Promise.all([
-          fetch(`/api/scripts/${id}/code`, {
+          apiFetch(`/api/scripts/${id}/code`, {
             method: 'PUT',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code }),
           }),
-          fetch(`/api/scripts/${id}`, {
+          apiFetch(`/api/scripts/${id}`, {
             method: 'PATCH',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
@@ -102,7 +102,7 @@ export default function ScriptEditor({
         }
 
         if (publishAfter) {
-          const publishResponse = await fetch(`/api/scripts/${id}/publish`, {
+          const publishResponse = await apiFetch(`/api/scripts/${id}/publish`, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
@@ -117,7 +117,7 @@ export default function ScriptEditor({
         } else {
           setStatus('Saved');
         }
-        router.refresh();
+        nav.refresh();
       } catch {
         setError('Network error — please try again');
       } finally {
@@ -125,7 +125,7 @@ export default function ScriptEditor({
         setTimeout(() => setStatus(null), 2600);
       }
     },
-    [code, description, initial, mode, name, router],
+    [code, description, initial, mode, name, nav],
   );
 
   const remove = useCallback(async () => {
@@ -134,7 +134,7 @@ export default function ScriptEditor({
     setBusy('delete');
     setError(null);
     try {
-      const response = await fetch(`/api/scripts/${initial.script_id}`, {
+      const response = await apiFetch(`/api/scripts/${initial.script_id}`, {
         method: 'DELETE',
         credentials: 'same-origin',
       });
@@ -143,12 +143,12 @@ export default function ScriptEditor({
         setError(payload.error ?? `Delete failed (${response.status})`);
         return;
       }
-      router.push('/scripts');
-      router.refresh();
+      nav.push('/scripts');
+      nav.refresh();
     } finally {
       setBusy(null);
     }
-  }, [initial, mode, router]);
+  }, [initial, mode, nav]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

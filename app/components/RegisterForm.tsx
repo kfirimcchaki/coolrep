@@ -1,10 +1,10 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
+import { useNav } from '../../lib/app-router';
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function RegisterForm({ returnTo }: { returnTo: string }) {
-  const router = useRouter();
+  const nav = useNav();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -16,19 +16,14 @@ export default function RegisterForm({ returnTo }: { returnTo: string }) {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ name, username: username.toLowerCase(), password }),
-      });
+      const response = await apiFetch('/api/auth/register', { method: 'POST', body: { name, username: username.toLowerCase(), password } });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         setError(payload.error ?? `Registration failed (${response.status})`);
         return;
       }
-      router.push(returnTo);
-      router.refresh();
+      nav.push(returnTo);
+      nav.refresh();
     } catch {
       setError('Network error — please try again');
     } finally {

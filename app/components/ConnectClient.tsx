@@ -1,7 +1,8 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '../../lib/app-router';
 import { useEffect, useRef, useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 type Status = 'waiting' | 'exchanging' | 'error';
 
@@ -35,12 +36,7 @@ export default function ConnectClient({
     setStatus('exchanging');
     (async () => {
       try {
-        const response = await fetch('/api/auth/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ id_token: idToken, return_to: returnTo }),
-        });
+        const response = await apiFetch('/api/auth/connect', { method: 'POST', body: { id_token: idToken, return_to: returnTo } });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           setStatus('error');

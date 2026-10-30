@@ -1,18 +1,18 @@
 'use client';
-
-import { useRouter } from 'next/navigation';
+import { useNav } from '../../lib/app-router';
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function LogOutButton() {
-  const router = useRouter();
+  const nav = useNav();
   const [busy, setBusy] = useState(false);
 
   async function logOut() {
     setBusy(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
-      router.push('/');
-      router.refresh();
+      await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      nav.push('/');
+      nav.refresh();
     } finally {
       setBusy(false);
     }

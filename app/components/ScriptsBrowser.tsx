@@ -1,15 +1,15 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { Link, useNav } from '../../lib/app-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 import type { ScriptListItem } from '../../lib/types';
 import ScriptCard from './ScriptCard';
 
 type Sort = 'recent' | 'updated' | 'name';
 
 export default function ScriptsBrowser() {
-  const router = useRouter();
+  const nav = useNav();
   const [scripts, setScripts] = useState<ScriptListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -20,12 +20,12 @@ export default function ScriptsBrowser() {
     async (signal?: AbortSignal) => {
       const params = new URLSearchParams({ limit: '60', sort });
       if (search.trim()) params.set('search', search.trim());
-      const response = await fetch(`/api/scripts?${params.toString()}`, {
+      const response = await apiFetch(`/api/scripts?${params.toString()}`, {
         credentials: 'same-origin',
         signal,
       });
       if (response.status === 401) {
-        router.replace(`/login?return_to=${encodeURIComponent('/scripts')}`);
+        nav.replace(`/login?return_to=${encodeURIComponent('/scripts')}`);
         return;
       }
       const payload = await response.json();
@@ -33,7 +33,7 @@ export default function ScriptsBrowser() {
       setScripts(payload.scripts as ScriptListItem[]);
       setTotal(payload.total ?? 0);
     },
-    [router, search, sort],
+    [nav, search, sort],
   );
 
   useEffect(() => {

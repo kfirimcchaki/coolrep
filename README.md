@@ -11,10 +11,21 @@ that backs every decision is in [`docs/RESEARCH.md`](docs/RESEARCH.md), and the 
 endpoint contract (verified vs. inferred) is in [`docs/API.md`](docs/API.md).
 
 ```
-Next.js 15 (App Router, React 19, TypeScript)  ·  26 routes  ·  zero native deps
-51 HTTP contract tests  ·  JSON-file database with atomic writes  ·  signed cookie sessions
+Next.js 15 (App Router, React 19, TypeScript)  ·  26 server routes  ·  zero native deps
+51 HTTP contract tests  ·  61 static-build tests  ·  JSON-file database with atomic writes
 OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs timestamps
 ```
+
+**Two deployables, one codebase:**
+
+| | Server build | Static build (GitHub Pages) |
+| --- | --- | --- |
+| Run / build | `npm run dev` · `npm run build && npm start` | `npm run build:static` |
+| Backend | Next.js route handlers in `app/api/**` | the same 21 endpoints in the browser (`lib/virtual/server.ts`) |
+| Data | `.data/db.json` | `localStorage` (seeded automatically) |
+| Best for | real multi-user hosting | a zero-backend live demo on GitHub Pages |
+
+See [`docs/STATIC.md`](docs/STATIC.md) for the static build in detail.
 
 ---
 
@@ -47,6 +58,13 @@ Production build:
 
 ```bash
 npm run build && npm start
+```
+
+GitHub Pages build (no server at all):
+
+```bash
+npm run build:static          # → site-dist/
+node scripts/serve-static.mjs 4173
 ```
 
 Reset all data:
@@ -158,9 +176,15 @@ lib/
   api-helpers.ts            session guards, ownership checks, visibility rules
   ids.ts                    UUIDv7 + microsecond timestamps
   types.ts                  the API's data shapes
+static/                     GitHub Pages SPA (entry, router, views, html shells)
+lib/virtual/                in-browser backend: crypto, storage, 21 endpoints
+lib/api-client.ts           transport switch + fetch-shaped helper used by every component
+lib/app-router.tsx          navigation/link abstraction shared by both builds
 middleware.ts               CORS, /connect 302, OAuth state cookie
-docs/                       research log + API reference
-scripts/                    seed (via HTTP), smoke tests, reset
+docs/                       research log, API reference, static-build guide
+scripts/                    seed (via HTTP), smoke tests, static build/tests/server
+docs/                       research + API docs, and the published Pages artifact
+deploy/pages.yml            optional GitHub Actions deployment workflow
 ```
 
 **Storage.** A single JSON document (`.data/db.json`) with write-through persistence and
@@ -208,7 +232,10 @@ microsecond timestamps, UUIDv7 shape, ownership rules, share links, publish flow
 
 ```bash
 npm run build && npm start &
-node scripts/smoke.mjs            # 51 assertions
+node scripts/smoke.mjs            # 51 assertions against the real HTTP API
+
+node scripts/test-static.mjs      # 61 assertions: in-browser backend, jsdom render of every
+                                  # SPA route, and the GitHub Pages loader
 ```
 
 `scripts/seed.mjs` creates the demo accounts and six demo scripts **through the public
@@ -217,6 +244,33 @@ API**, so a green seed also means every write endpoint works.
 ---
 
 ## Deployment
+
+### GitHub Pages (static, no backend)
+
+The built site is committed to **`docs/`**, so it deploys without any workflow:
+
+1. **Settings → Pages → Build and deployment → Source: _Deploy from a branch_.**
+2. **Branch `main`, folder `/docs`** → Save.
+3. Open `https://<user>.github.io/<repository>/` (or your custom domain).
+
+Rebuild after changes with `npm run build:pages` (tests, bundle, publish into `docs/`).
+
+Prefer Actions? `deploy/pages.yml` is a drop-in workflow that runs the static test suite,
+builds the artifact and publishes it with `actions/deploy-pages` — copy it to
+`.github/workflows/pages.yml` and set **Source: GitHub Actions**.
+
+The artifact resolves its own base path at runtime, so project pages (`/repo/…`), user pages
+and custom domains all work from the same build.
+
+The deployed site is fully functional — accounts, login (password *and* Null’s Connect),
+script creation with the `.lua` editor, publishing, releases, favorites, profiles, settings
+and working “start friendly battle” launch links. It talks to an in-browser implementation
+of the exact same 21 endpoints; data lives in your browser’s `localStorage`.
+
+> Static hosting cannot run a shared database. For multi-user persistence use the server
+> build below, or swap `lib/store.ts` for Postgres.
+
+### Server build
 
 * **Vercel / any Node host** — push the repo, set `APP_URL` and `SESSION_SECRET`.
 * **Docker** — `docker build -t nt-scripting . && docker run -p 3000:3000 -v $PWD/.data:/app/.data nt-scripting`

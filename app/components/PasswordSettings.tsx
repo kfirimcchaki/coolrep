@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function PasswordSettings({ configured }: { configured: boolean }) {
   const [current, setCurrent] = useState('');
@@ -15,7 +16,7 @@ export default function PasswordSettings({ configured }: { configured: boolean }
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch('/api/auth/password', {
+      const response = await apiFetch('/api/auth/password', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },

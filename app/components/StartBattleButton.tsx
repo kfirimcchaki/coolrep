@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { apiFetch } from '../../lib/api-client';
 
 export default function StartBattleButton({ scriptId }: { scriptId: string }) {
   const [busy, setBusy] = useState(false);
@@ -13,7 +14,7 @@ export default function StartBattleButton({ scriptId }: { scriptId: string }) {
     setError(null);
     setCopied(false);
     try {
-      const response = await fetch(`/api/scripts/${scriptId}/share`, {
+      const response = await apiFetch(`/api/scripts/${scriptId}/share`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
