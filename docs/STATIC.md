@@ -47,23 +47,33 @@ Static routes are also emitted as real `index.html` files so they answer **200**
 
 ## Deploying
 
-The built site is committed to **`docs/`**, so Pages needs no workflow and no special
-permissions:
+This repository serves Pages from the **branch root**, without any workflow:
 
-1. Push this repository to GitHub.
-2. **Settings → Pages → Build and deployment → Source: _Deploy from a branch_.**
-3. **Branch: `main` · Folder: `/docs`** → *Save*.
-4. Open `https://<user>.github.io/<repository>/` (first publish takes ~30 s).
-
-Regenerate the artifact after changing the app:
-
-```bash
-npm run build:pages        # build-static + publish-docs
-git add docs && git commit -m "Rebuild Pages site"
+```
+Settings → Pages → Build and deployment
+  Source:  Deploy from a branch
+  Branch:  main        Folder: / (root)
 ```
 
-`docs/` also keeps the Markdown documentation; `scripts/publish-docs.mjs` only replaces the
-generated files (`index.html`, `404.html`, `assets/`, per-route folders…).
+The site artifact is committed at the root so that configuration just works:
+
+| File | Purpose |
+| --- | --- |
+| `index.html` | SPA shell |
+| `404.html` | SPA shell served for every deep link (`/scripts/<uuid>`, `/users/<uuid>`, `/b/<token>`, …) |
+| `assets/app.js`, `assets/app.css` | the bundle |
+| `favicon.svg`, `robots.txt` | icons / keep crawlers out |
+| `.nojekyll` | serve files verbatim instead of running Jekyll |
+
+Regenerate after changing the app:
+
+```bash
+npm run build:pages        # build-static + publish-pages
+git add index.html 404.html assets .nojekyll && git commit -m "Rebuild Pages site"
+```
+
+`scripts/publish-pages.mjs` only replaces those generated entries; sources, `docs/`
+(Markdown) and tooling are untouched.
 
 ### Optional: deploy with GitHub Actions instead
 
@@ -74,8 +84,15 @@ artifact and publishes it with `actions/deploy-pages`:
 mkdir -p .github/workflows && cp deploy/pages.yml .github/workflows/pages.yml
 ```
 
-Then set **Source: GitHub Actions**. (This path is optional — the copy to `docs/` works
-without it.)
+Then set **Source: GitHub Actions**. This is optional: the root artifact already works.
+
+### Caveat of root hosting
+
+Because the artifact lives at the repository root, the site's `/scripts/…` route shares its
+name with the `scripts/` tooling folder. Deep links therefore rely on `404.html` — the
+standard GitHub Pages fallback — rather than a per-route `index.html`. Functionally
+identical: the SPA boots and renders the right screen, only the HTTP status of a deep link
+is `404` while the page renders normally.
 
 ### No base path to configure
 

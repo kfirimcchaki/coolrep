@@ -183,7 +183,8 @@ lib/app-router.tsx          navigation/link abstraction shared by both builds
 middleware.ts               CORS, /connect 302, OAuth state cookie
 docs/                       research log, API reference, static-build guide
 scripts/                    seed (via HTTP), smoke tests, static build/tests/server
-docs/                       research + API docs, and the published Pages artifact
+docs/                       research log, API reference, static-build guide
+index.html 404.html assets/ the published GitHub Pages artifact (generated)
 deploy/pages.yml            optional GitHub Actions deployment workflow
 ```
 
@@ -247,13 +248,15 @@ API**, so a green seed also means every write endpoint works.
 
 ### GitHub Pages (static, no backend)
 
-The built site is committed to **`docs/`**, so it deploys without any workflow:
+The built site is committed at the **repository root**, so Pages serves it with no workflow
+and no extra permissions:
 
-1. **Settings → Pages → Build and deployment → Source: _Deploy from a branch_.**
-2. **Branch `main`, folder `/docs`** → Save.
-3. Open `https://<user>.github.io/<repository>/` (or your custom domain).
+**Settings → Pages → Deploy from a branch → Branch `main`, folder `/` (root)** → Save →
+open `https://<user>.github.io/<repository>/`.
 
-Rebuild after changes with `npm run build:pages` (tests, bundle, publish into `docs/`).
+The published entries are `index.html`, `404.html` (SPA fallback for every deep link),
+`assets/`, `favicon.svg`, `robots.txt` and `.nojekyll`. Rebuild after changes with
+`npm run build:pages`.
 
 Prefer Actions? `deploy/pages.yml` is a drop-in workflow that runs the static test suite,
 builds the artifact and publishes it with `actions/deploy-pages` — copy it to

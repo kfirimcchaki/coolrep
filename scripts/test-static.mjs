@@ -359,8 +359,8 @@ async function renderTests() {
 
 async function loaderTests() {
   console.log('\nGitHub Pages loader\n');
-  const html = await readFile(path.join(root, 'docs/index.html'), 'utf8');
-  const notFound = await readFile(path.join(root, 'docs/404.html'), 'utf8');
+  const html = await readFile(path.join(root, 'index.html'), 'utf8');
+  const notFound = await readFile(path.join(root, '404.html'), 'utf8');
 
   const cases = [
     { url: 'https://user.github.io/coolrep/', expected: '/coolrep', label: 'project page root' },
@@ -382,8 +382,8 @@ async function loaderTests() {
   }
 
   check('404.html carries the same loader', notFound.includes('__NT_BASE__') && notFound.includes('/assets/app.js'));
-  check('docs/ ships .nojekyll for GitHub Pages', await readFile(path.join(root, 'docs/.nojekyll'), 'utf8').then(() => true).catch(() => false));
-  check('docs/ ships the bundle', await readFile(path.join(root, 'docs/assets/app.js'), 'utf8').then(() => true).catch(() => false));
+  check('the published root ships .nojekyll', await readFile(path.join(root, '.nojekyll'), 'utf8').then(() => true).catch(() => false));
+  check('the published root ships the bundle', await readFile(path.join(root, 'assets/app.js'), 'utf8').then(() => true).catch(() => false));
 }
 
 async function main() {

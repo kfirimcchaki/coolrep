@@ -9,6 +9,3 @@ out/
 tsconfig.tsbuildinfo
 site-dist/
 .tmp/
-
-# docs/ holds the published GitHub Pages build — do not ignore it
-!docs/

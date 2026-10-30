@@ -14,7 +14,7 @@
     "preview:static": "node scripts/build-static.mjs && node scripts/serve-static.mjs 4173",
     "test:static": "node scripts/test-static.mjs",
     "test:api": "node scripts/smoke.mjs",
-    "build:pages": "node scripts/build-static.mjs && node scripts/publish-docs.mjs"
+    "build:pages": "node scripts/build-static.mjs && node scripts/publish-pages.mjs"
   },
   "engines": {
     "node": ">=20"
