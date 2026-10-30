@@ -1,0 +1,27 @@
+{
+  "name": "nt-scripting-clone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Independent, from-scratch recreation of the NT Scripting web platform and its REST API",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "seed": "node --experimental-strip-types scripts/seed.ts",
+    "smoke": "node scripts/smoke.mjs",
+    "reset": "node scripts/reset.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "next": "^15.5.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "typescript": "^5.9.3"
+  }
+}
