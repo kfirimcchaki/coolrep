@@ -12,7 +12,7 @@ endpoint contract (verified vs. inferred) is in [`docs/API.md`](docs/API.md).
 
 ```
 Next.js 15 (App Router, React 19, TypeScript)  ·  26 server routes  ·  zero native deps
-51 HTTP contract tests  ·  61 static-build tests  ·  JSON-file database with atomic writes
+51 HTTP contract tests  ·  103 static-build tests  ·  JSON-file database with atomic writes
 OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs timestamps
 ```
 
@@ -22,10 +22,28 @@ OIDC-style id_token login with a bundled identity provider  ·  UUIDv7 ids, µs 
 | --- | --- | --- |
 | Run / build | `npm run dev` · `npm run build && npm start` | `npm run build:static` |
 | Backend | Next.js route handlers in `app/api/**` | the same 21 endpoints in the browser (`lib/virtual/server.ts`) |
-| Data | `.data/db.json` | `localStorage` (seeded automatically) |
-| Best for | real multi-user hosting | a zero-backend live demo on GitHub Pages |
+| Data | `.data/db.json` | IndexedDB, optionally shared through a GitHub Gist or a server build |
+| Extra | — | installable PWA, offline shell, deep links |
+| Best for | real multi-user hosting | a live site on GitHub Pages — sharing included |
 
 See [`docs/STATIC.md`](docs/STATIC.md) for the static build in detail.
+
+### Three ways to store the data of the static build
+
+| Mode | Setup | Shared between devices? |
+| --- | --- | --- |
+| **This browser** | none (default) | no — IndexedDB per profile |
+| **GitHub Gist** | paste a token with the `gist` scope in *Settings → Backend* | **yes** — the document lives in the gist, `?gist=<id>` opens it anywhere |
+| **Server build** | deploy `deploy/render.yaml` (or Fly/Railway/Compose), then paste the URL | **yes** — real multi-user API with Bearer sessions |
+
+```bash
+# bake a default backend into the static bundle
+NT_API=https://nt-scripting.onrender.com npm run build:static
+```
+
+The gist transport needs no infrastructure at all: local writes hit IndexedDB first, then
+flush to `api.github.com/gists` (1.2 s debounce, queued while offline), and the token never
+leaves the browser.
 
 ---
 

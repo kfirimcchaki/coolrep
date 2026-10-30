@@ -24,6 +24,8 @@ function isAllowedOrigin(origin: string): boolean {
   if (allowlist.includes('*')) return true;
   if (allowlist.includes(origin)) return true;
   if (/^https:\/\/[a-z0-9-]+\.e2b\.app$/i.test(origin)) return true;
+  // The static build can be hosted on GitHub Pages and talk to this API.
+  if (/^https:\/\/[a-z0-9-]+\.github\.io$/i.test(origin)) return true;
   if (process.env.APP_URL && origin === process.env.APP_URL.replace(/\/$/, '')) return true;
   return false;
 }

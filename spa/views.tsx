@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from '../lib/app-router';
-import { apiFetch, IS_STATIC, resetLocalData } from '../lib/api-client';
+import { apiFetch } from '../lib/api-client';
 import type {
   PublicUser,
   ReleaseSummary,
@@ -15,6 +15,7 @@ import PublishButton from '../app/components/PublishButton';
 import PasswordSettings from '../app/components/PasswordSettings';
 import CopyField from '../app/components/CopyField';
 import DownloadButton from '../app/components/DownloadButton';
+import BackendPanel from './backend-panel';
 import { formatDate, formatDay, useApi, useRouterState, useSession } from './lib';
 import { LoadingView, NotFoundView } from './shell';
 
@@ -528,29 +529,7 @@ export function SettingsView() {
           </Link>
         </div>
 
-        {IS_STATIC ? (
-          <div className="panel" style={{ padding: 20, marginTop: 14 }}>
-            <h3 className="section-title" style={{ fontSize: 15, marginBottom: 6 }}>
-              Local data
-            </h3>
-            <p className="small muted" style={{ marginTop: 4, marginBottom: 14 }}>
-              This deployment stores every account, script and release in your browser. Reset it to get the
-              seeded demo content back.
-            </p>
-            {status ? <div className="form-note">{status}</div> : null}
-            <button
-              className="btn btn-danger"
-              type="button"
-              onClick={async () => {
-                await resetLocalData();
-                setStatus('Local data cleared — reloading…');
-                window.location.href = `${window.location.origin}${window.location.pathname}`;
-              }}
-            >
-              Reset local data
-            </button>
-          </div>
-        ) : null}
+        <BackendPanel />
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ function check(label, condition, detail = '') {
 
 async function bundle(entry, outfile, extra = {}) {
   await mkdir(tmp, { recursive: true });
+  const { ntApi = '', ...esbuildOptions } = extra;
   await build({
     entryPoints: [path.join(root, entry)],
     bundle: true,
@@ -45,9 +46,10 @@ async function bundle(entry, outfile, extra = {}) {
     define: {
       'process.env.NEXT_PUBLIC_STATIC_MODE': '"1"',
       'process.env.NODE_ENV': '"production"',
+      'process.env.NT_API': JSON.stringify(ntApi),
     },
     logLevel: 'error',
-    ...extra,
+    ...esbuildOptions,
   });
   return path.join(tmp, outfile);
 }
@@ -340,6 +342,9 @@ async function renderTests() {
     scriptDetail.text.includes('Releases'));
 
   const settings = await renderRoute('/settings', { token, localStorageSeed: seedStorage });
+  check('settings exposes the shared-database panel',
+    settings.text.includes('Backend') && settings.text.includes('Shared database (no server needed)') &&
+    settings.text.includes('GitHub token'));
   check('settings renders sign-in methods',
     settings.text.includes('Settings') && settings.text.includes('Sign in methods') &&
     settings.text.includes("Null's Connect"));
@@ -353,8 +358,258 @@ async function renderTests() {
     [...list.errors, ...profile.errors].slice(0, 2).join(' | '));
 }
 
+
 /* ------------------------------------------------------------------ */
-/* 3. Deployment loader (docs/index.html + docs/404.html)              */
+/* 4. Shared gist transport (static build without a server)            */
+/* ------------------------------------------------------------------ */
+
+async function gistTests() {
+  console.log('\nShared gist transport\n');
+  const file = await bundle('spa/test-entry.tsx', 'gist.mjs');
+  const gist = await import(pathToUrl(file));
+
+  // The module reads localStorage; give it a Map-backed stand-in.
+  const mem = new gist.MemoryStorage();
+  const previousLocalStorage = globalThis.localStorage;
+  globalThis.localStorage = mem;
+
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  let gistFiles = {};
+  let rawContent = '';
+  const gistId = 'abc123def4567890';
+
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    calls.push({ href, method: init.method ?? 'GET', body: init.body });
+    if (href.startsWith('https://api.github.com/gists') && (init.method ?? 'GET') === 'POST') {
+      const payload = JSON.parse(init.body);
+      gistFiles = payload.files;
+      return new Response(JSON.stringify({ id: gistId, files: payload.files }), { status: 201 });
+    }
+    if (href.includes('api.github.com/gists/') && init.method === 'PATCH') {
+      const payload = JSON.parse(init.body);
+      gistFiles = payload.files;
+      return new Response(JSON.stringify({ id: gistId, files: payload.files }), { status: 200 });
+    }
+    if (href.includes('api.github.com/gists/')) {
+      if (href.includes('missing000000000')) {
+        return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+      }
+      return new Response(JSON.stringify({ id: gistId, files: gistFiles }), { status: 200 });
+    }
+    if (href.startsWith('https://gist.githubusercontent.com/')) {
+      return new Response(rawContent, { status: 200 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  try {
+    check('parseGistId accepts a bare id',
+      gist.parseGistId('abc123def4567890') === 'abc123def4567890');
+    check('parseGistId accepts a gist URL',
+      gist.parseGistId('https://gist.github.com/someone/abc123def4567890') === 'abc123def4567890');
+    check('parseGistId rejects junk', gist.parseGistId('../etc/passwd') === null);
+
+    const doc = gist.emptyDocument();
+    doc.scripts.push({
+      script_id: '01a18cf5-a631-74f8-8ecf-b1871b29c343',
+      name: 'Shared script',
+      description: null,
+      user_map_id: '01a18cf5-a631-74f8-8ecf-b1871b29c344',
+      user_map_internal_id: 'CRPJR2C0U:9YGC8UV9RCJ',
+      author_uuid: '01a18cf5-a631-74f8-8ecf-b1871b29c345',
+      created_at: '2026-10-30T12:00:00.000000Z',
+      updated_at: '2026-10-30T12:00:00.000000Z',
+      published_at: '2026-10-30T12:00:00.000000Z',
+      code: '-- hi',
+      favorites: [],
+    });
+
+    const created = await gist.pushGistDocument({ token: 'ghp_testtoken1234567890', gistId: null }, doc);
+    check('pushGistDocument creates a gist and returns its id',
+      created.gistId === gistId && calls[0].method === 'POST' && calls[0].href.endsWith('/gists'),
+      JSON.stringify(calls[0]));
+    check('the gist is created secret (public:false)',
+      JSON.parse(calls[0].body).public === false);
+
+    const updated = await gist.pushGistDocument(created, doc);
+    const patch = calls.find((call) => call.method === 'PATCH');
+    check('a second push PATCHes the existing gist', Boolean(patch) && updated.gistId === gistId);
+    check('the document lives in nt-scripting-db.json',
+      Boolean(JSON.parse(calls[0].body).files['nt-scripting-db.json']));
+
+    const pulled = await gist.fetchGistDocument(gistId);
+    check('fetchGistDocument returns the stored scripts',
+      pulled?.scripts.length === 1 && pulled.scripts[0].name === 'Shared script',
+      JSON.stringify(pulled?.scripts?.length));
+
+    // Truncated payloads must be re-read from raw_url.
+    rawContent = JSON.stringify(doc);
+    gistFiles = {
+      'nt-scripting-db.json': {
+        truncated: true,
+        content: '',
+        raw_url: 'https://gist.githubusercontent.com/u/abc/raw/nt-scripting-db.json',
+      },
+    };
+    const fromRaw = await gist.fetchGistDocument(gistId);
+    check('truncated gists are re-read from raw_url',
+      fromRaw?.scripts.length === 1 && fromRaw.scripts[0].name === 'Shared script');
+
+    const missing = await gist.fetchGistDocument('missing000000000').catch((error) => error);
+    check('a missing gist surfaces a readable error',
+      missing instanceof Error && missing.status === 404, String(missing?.message));
+
+    // Config round-trip + storage facade wiring.
+    gist.writeGistConfig({ token: 'ghp_testtoken1234567890', gistId: null });
+    gistFiles = {};
+    const base = new gist.MemoryStorage();
+    const synced = gist.createGistStorage(base);
+    synced.setItem('nts.db.v1', JSON.stringify(doc));
+    gist.flushGistSync();
+
+    let attempts = 0;
+    while (!gist.readGistConfig()?.gistId && attempts < 40) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      attempts += 1;
+    }
+    check('writes queue to the gist without blocking the UI',
+      gist.readGistConfig()?.gistId === gistId, JSON.stringify(gist.readGistConfig()));
+    check('the local copy is written synchronously',
+      JSON.parse(base.getItem('nts.db.v1')).scripts.length === 1);
+
+    // Hydration from a ?gist= link, with no token configured.
+    gist.writeGistConfig(null);
+    const linkStore = new gist.MemoryStorage();
+    const hydration = await gist.hydrateFromSharedStore(linkStore, new URLSearchParams(`gist=${gistId}`));
+    check('?gist=ID hydrates the local database',
+      hydration.source === 'link' && JSON.parse(linkStore.getItem('nts.db.v1')).scripts.length === 1,
+      JSON.stringify(hydration));
+
+    const none = await gist.hydrateFromSharedStore(new gist.MemoryStorage(), new URLSearchParams(''));
+    check('no gist configured → nothing to hydrate',
+      none.source === null && none.error === null);
+
+    check('gistStatus reports the sync state',
+      typeof gist.gistStatus().configured === 'boolean' &&
+      typeof gist.gistStatus().lastError !== 'undefined');
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.localStorage = previousLocalStorage;
+    gist.writeGistConfig(null);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Published artifact: PWA shell + real documents for routes        */
+/* ------------------------------------------------------------------ */
+
+async function artifactTests() {
+  console.log('\nPublished artifact\n');
+
+  const sw = await readFile(path.join(root, 'sw.js'), 'utf8').catch(() => null);
+  check('the published root ships sw.js', Boolean(sw));
+  check('the service worker version is stamped',
+    Boolean(sw) && !sw.includes('__VERSION__') && /nt-scripting-[a-z0-9]+/i.test(sw));
+  check('the service worker caches the shell and assets',
+    Boolean(sw) && sw.includes('/assets/app.js') && sw.includes('index.html'));
+
+  const manifest = await readFile(path.join(root, 'manifest.webmanifest'), 'utf8').catch(() => null);
+  let parsedManifest = null;
+  try {
+    parsedManifest = JSON.parse(manifest);
+  } catch {
+    parsedManifest = null;
+  }
+  check('the published root ships a web manifest', Boolean(parsedManifest));
+  const iconSizes = (parsedManifest?.icons ?? []).map((icon) => icon.sizes);
+  check('the manifest is standalone with base-relative URLs',
+    parsedManifest?.display === 'standalone' && parsedManifest?.start_url === './' &&
+    parsedManifest?.scope === './',
+    `${parsedManifest?.display} ${parsedManifest?.start_url}`);
+  check('the manifest declares 192px and 512px raster icons',
+    iconSizes.includes('192x192') && iconSizes.includes('512x512') &&
+    (parsedManifest?.icons ?? []).some((icon) => icon.purpose === 'maskable'),
+    iconSizes.join(','));
+  for (const icon of ['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png']) {
+    const bytes = await readFile(path.join(root, icon)).catch(() => null);
+    check(`${icon} is a real PNG`,
+      Boolean(bytes) && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes.subarray(12, 16).toString() === 'IHDR');
+  }
+  check('an apple-touch-icon is published',
+    await readFile(path.join(root, 'icons/apple-touch-icon.png')).then(() => true).catch(() => false));
+
+  for (const route of ['login', 'register', 'connect', 'settings']) {
+    const html = await readFile(path.join(root, route, 'index.html'), 'utf8').catch(() => null);
+    check(`/${route}/ is published as a real document (HTTP 200, no 404 shell)`,
+      Boolean(html) && html.includes('assets/app.js'));
+  }
+
+  const index = await readFile(path.join(root, 'index.html'), 'utf8');
+  check('the shell links the manifest', index.includes('manifest.webmanifest'));
+  check('the shell links the apple-touch-icon', index.includes('apple-touch-icon'));
+  const notFound = await readFile(path.join(root, '404.html'), 'utf8');
+  check('the 404 shell links the manifest too', notFound.includes('manifest.webmanifest'));
+  check('/scripts stays a tooling folder (no shadowing index.html)',
+    await readFile(path.join(root, 'scripts/index.html'), 'utf8').then(() => false).catch(() => true));
+}
+
+
+/* ------------------------------------------------------------------ */
+/* 6. Backend resolution chain                                         */
+/* ------------------------------------------------------------------ */
+
+async function backendSelectionTests() {
+  console.log('\nBackend selection\n');
+  const { MemoryStorage } = await import(pathToUrl(await bundle('spa/test-entry.tsx', 'api.mjs')));
+  const plain = await import(pathToUrl(await bundle('spa/test-entry.tsx', 'api.mjs')));
+  void plain;
+  const baked = await import(
+    pathToUrl(
+      await bundle('spa/test-entry.tsx', 'api-baked.mjs', { ntApi: 'https://baked.example' }),
+    )
+  );
+
+  const previousWindow = globalThis.window;
+  const previousLocalStorage = globalThis.localStorage;
+  const mem = new MemoryStorage();
+  globalThis.localStorage = mem;
+  globalThis.window = { location: { search: '' }, __NT_API__: undefined };
+  baked.useLocalBackend();
+
+  try {
+    check('no configuration → the in-browser backend', baked.backendMode() === 'local');
+    check('"use this browser" opts out of a build-time default API',
+      baked.resolveApiBase() === '', baked.resolveApiBase());
+
+    baked.setStoredApiBase('https://mine.example/');
+    check('a stored server URL wins over the in-browser backend',
+      baked.resolveApiBase() === 'https://mine.example', baked.resolveApiBase());
+    check('the mode flips to remote', baked.backendMode() === 'remote');
+
+    globalThis.window.location.search = '?api=https://query.example';
+    check('?api= overrides everything',
+      baked.resolveApiBase() === 'https://query.example', baked.resolveApiBase());
+    check('?api= is remembered for the session',
+      baked.backendMode() === 'remote' && localStorage.getItem('nts.apiBase') === 'https://query.example');
+
+    globalThis.window.location.search = '';
+    baked.setStoredApiBase('');
+    baked.setStoredApiBase('not a url');
+    check('junk URLs are ignored — the build-time default comes back',
+      baked.resolveApiBase() === 'https://baked.example', baked.resolveApiBase());
+    baked.useLocalBackend();
+    check('"use this browser" returns to the in-browser backend for good',
+      baked.resolveApiBase() === '' && baked.backendMode() === 'local', baked.resolveApiBase());
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.localStorage = previousLocalStorage;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Deployment loader (index.html + 404.html)                        */
 /* ------------------------------------------------------------------ */
 
 async function loaderTests() {
@@ -406,6 +661,9 @@ async function main() {
   await contractTests();
   await renderTests();
   await loaderTests();
+  await gistTests();
+  await artifactTests();
+  await backendSelectionTests();
 
   console.log(`\n${passed} passed, ${failures.length} failed`);
   if (failures.length) {

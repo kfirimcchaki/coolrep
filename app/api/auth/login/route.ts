@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
 
     const session = await issueSession(user.user_id, request);
-    const response = json({ user: toPublicUser(user) });
+    const response = json({ user: toPublicUser(user), session_id: session.sessionId });
     applySessionCookie(response, session.cookie, session.maxAge, isSecureRequest(request));
     return response;
   } catch (error) {

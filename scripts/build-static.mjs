@@ -19,6 +19,8 @@ const outDir = path.resolve(root, process.env.STATIC_OUT_DIR || 'site-dist');
 const repository =
   process.env.GITHUB_REPOSITORY?.split('/')[1] || path.basename(root) || 'coolrep';
 
+if (process.env.NT_API) console.log(`  default API baked in: ${process.env.NT_API}`);
+
 console.log(`building static site → ${path.relative(root, outDir) || '.'} (repository: ${repository})`);
 
 await rm(outDir, { recursive: true, force: true });
@@ -40,6 +42,8 @@ const result = await build({
   define: {
     'process.env.NEXT_PUBLIC_STATIC_MODE': '"1"',
     'process.env.NODE_ENV': '"production"',
+    // Optional default backend baked into the bundle: NT_API=https://host npm run build:static
+    'process.env.NT_API': JSON.stringify(process.env.NT_API || ''),
   },
   loader: { '.css': 'css', '.svg': 'dataurl' },
   logLevel: 'warning',
@@ -65,6 +69,13 @@ for (const route of ['login', 'register', 'connect', 'settings', 'scripts', 'scr
 }
 
 await cp(path.join(root, 'app/icon.svg'), path.join(outDir, 'favicon.svg'));
+
+// Progressive web app: offline shell + installable manifest.
+const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+const sw = await readFile(path.join(root, 'spa/sw.js'), 'utf8');
+await writeFile(path.join(outDir, 'sw.js'), sw.replaceAll('__VERSION__', stamp), 'utf8');
+await cp(path.join(root, 'spa/manifest.webmanifest'), path.join(outDir, 'manifest.webmanifest'));
+await cp(path.join(root, 'spa/icons'), path.join(outDir, 'icons'), { recursive: true });
 await writeFile(path.join(outDir, '.nojekyll'), '', 'utf8');
 await writeFile(path.join(outDir, 'robots.txt'), 'User-agent: *\nDisallow: /\n', 'utf8');
 

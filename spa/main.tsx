@@ -67,6 +67,18 @@ function documentTitle(segments: string[]): string {
   return 'NT Scripting';
 }
 
+/* Offline support (static build only — the Next server build serves from origin). */
+const basePath = (window as unknown as { __NT_BASE__?: string }).__NT_BASE__ ?? '';
+if ('serviceWorker' in navigator && basePath !== undefined) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register(`${basePath}/sw.js`, { scope: `${basePath}/` })
+      .catch(() => {
+        /* offline support is optional */
+      });
+  });
+}
+
 const container = document.getElementById('root');
 if (container) {
   createRoot(container).render(

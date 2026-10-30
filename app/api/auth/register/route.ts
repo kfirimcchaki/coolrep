@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     const user = await createUser({ name, username, password_hash: hashPassword(password) });
     const session = await issueSession(user.user_id, request);
-    const response = json({ user: toPublicUser(user) }, { status: 201 });
+    const response = json({ user: toPublicUser(user), session_id: session.sessionId }, { status: 201 });
     applySessionCookie(response, session.cookie, session.maxAge, isSecureRequest(request));
     return response;
   } catch (error) {

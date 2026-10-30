@@ -1,0 +1,32 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: New → Blueprint → pick this repository → Apply.
+# The service hosts the *server* build, which gives the GitHub Pages site a
+# shared database (Settings → Backend → Server URL).
+services:
+  - type: web
+    name: nt-scripting
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter # a persistent disk needs a paid instance; `free` works but resets on deploy
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /app/.data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false # e.g. https://kfirimcchaki.github.io
+      - key: CORS_ORIGINS
+        sync: false # e.g. https://kfirimcchaki.github.io,http://localhost:3000
+      - key: CONNECT_MOCK
+        value: "1"
+    disk:
+      name: nt-scripting-data
+      mountPath: /app/.data
+      sizeGB: 1

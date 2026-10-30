@@ -18,7 +18,24 @@ const root = process.cwd();
 const source = path.join(root, 'site-dist');
 
 // Everything this script owns at the repository root.
-const GENERATED = ['index.html', '404.html', 'assets', 'favicon.svg', 'robots.txt', '.nojekyll', 'CNAME'];
+const GENERATED = [
+  'index.html',
+  '404.html',
+  'assets',
+  'favicon.svg',
+  'robots.txt',
+  'manifest.webmanifest',
+  'icons',
+  'sw.js',
+  '.nojekyll',
+  'CNAME',
+  // real documents for the static screens (so they answer 200, not 404).
+  // /scripts stays a tooling folder, so it keeps using the 404.html fallback.
+  'login',
+  'register',
+  'connect',
+  'settings',
+];
 
 try {
   const info = await stat(source);
@@ -37,11 +54,9 @@ await cp(source, root, {
   force: true,
   filter: (file) => {
     const relative = path.relative(source, file);
-    // never overwrite repository sources with the per-route shells
     if (relative === '') return true;
-    return !relative.startsWith('login') && !relative.startsWith('register') &&
-      !relative.startsWith('connect') && !relative.startsWith('settings') &&
-      !relative.startsWith('scripts');
+    // /scripts is a source folder in this repository — its route shells stay out.
+    return !relative.split(path.sep)[0].match(/^scripts$/);
   },
 });
 

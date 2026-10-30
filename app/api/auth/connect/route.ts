@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       user: toPublicUser(user),
       return_to: returnTo.startsWith('/') ? returnTo : '/',
       token_verified: verified,
+      session_id: session.sessionId,
     });
     applySessionCookie(response, session.cookie, session.maxAge, isSecureRequest(request));
     return response;

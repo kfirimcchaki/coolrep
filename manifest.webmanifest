@@ -1,0 +1,45 @@
+{
+  "name": "NT Scripting",
+  "short_name": "NT Scripting",
+  "description": "Create and share Lua scripts for friendly battles.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#08090d",
+  "theme_color": "#08090d",
+  "categories": ["developer", "productivity", "games"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    { "name": "New script", "url": "./scripts/new" },
+    { "name": "Browse scripts", "url": "./scripts" },
+    { "name": "Settings", "url": "./settings" }
+  ]
+}

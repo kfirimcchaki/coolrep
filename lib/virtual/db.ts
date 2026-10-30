@@ -21,7 +21,7 @@ export class MemoryStorage implements StorageLike {
   }
 }
 
-const DB_KEY = 'nts.db.v1';
+const LEGACY_DB_KEY = 'nts.db.v1';
 
 const EMPTY: Database = {
   version: 1,
@@ -51,7 +51,7 @@ export class VirtualDatabase {
   }
 
   private load(): Database {
-    const raw = this.storage.getItem(DB_KEY);
+    const raw = this.storage.getItem(LEGACY_DB_KEY);
     if (!raw) return structuredClone(EMPTY);
     try {
       const parsed = JSON.parse(raw) as Partial<Database>;
@@ -71,7 +71,7 @@ export class VirtualDatabase {
   }
 
   private persist(): void {
-    this.storage.setItem(DB_KEY, JSON.stringify(this.data));
+    this.storage.setItem(LEGACY_DB_KEY, JSON.stringify(this.data));
   }
 
   read(): Database {
@@ -272,4 +272,186 @@ function internalMapId(): string {
       (byte) => alphabet[byte % alphabet.length],
     ).join('');
   return `${pick(9)}:${pick(11)}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Browser persistence: IndexedDB first, localStorage as a fallback     */
+/* ------------------------------------------------------------------ */
+
+const DB_KEY = 'nts.db.v1';
+const SEEDED_KEY = 'nts.seeded';
+const IDB_NAME = 'nt-scripting';
+const IDB_STORE = 'kv';
+
+function hasIndexedDb(): boolean {
+  try {
+    return typeof indexedDB !== 'undefined' && indexedDB !== null;
+  } catch {
+    return false;
+  }
+}
+
+function openIdb(): Promise<IDBDatabase | null> {
+  if (!hasIndexedDb()) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: IDBDatabase | null) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    try {
+      const request = indexedDB.open(IDB_NAME, 1);
+      request.onupgradeneeded = () => {
+        try {
+          request.result.createObjectStore(IDB_STORE);
+        } catch {
+          /* already there */
+        }
+      };
+      request.onsuccess = () => done(request.result);
+      request.onerror = () => done(null);
+      request.onblocked = () => done(null);
+      setTimeout(() => done(null), 1500);
+    } catch {
+      done(null);
+    }
+  });
+}
+
+function idbRequest<T>(request: IDBRequest<T>): Promise<T | null> {
+  return new Promise((resolve) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+  });
+}
+
+async function idbGet(db: IDBDatabase, key: string): Promise<string | null> {
+  try {
+    const store = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE);
+    const value = await idbRequest<string | null>(store.get(key) as IDBRequest<string | null>);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function idbSet(db: IDBDatabase, key: string, value: string): Promise<void> {
+  try {
+    const store = db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE);
+    await idbRequest(store.put(value, key));
+  } catch {
+    /* quota or private mode */
+  }
+}
+
+async function idbDelete(db: IDBDatabase, key: string): Promise<void> {
+  try {
+    const store = db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE);
+    await idbRequest(store.delete(key));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else if (value.length < 512 * 1024) localStorage.setItem(key, value);
+  } catch {
+    /* quota exceeded — IndexedDB still holds the data */
+  }
+}
+
+/**
+ * Builds a synchronous storage facade backed by IndexedDB (large capacity)
+ * with localStorage as a fallback and mirror.
+ */
+export async function createBrowserStorage(): Promise<StorageLike> {
+  const db = await openIdb();
+  const cache = new Map<string, string>();
+
+  for (const key of [DB_KEY, SEEDED_KEY]) {
+    const fromIdb = db ? await idbGet(db, key) : null;
+    const value = fromIdb ?? readLocal(key);
+    if (value !== null) cache.set(key, value);
+  }
+
+  let chain: Promise<unknown> = Promise.resolve();
+  const persist = (key: string, value: string | null) => {
+    chain = chain.then(async () => {
+      if (!db) return;
+      if (value === null) await idbDelete(db, key);
+      else await idbSet(db, key, value);
+    });
+  };
+
+  // Make sure buffered writes survive a tab close.
+  if (typeof window !== 'undefined') {
+    const flush = () => {
+      void chain;
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener?.('visibilitychange', flush);
+  }
+
+  return {
+    getItem(key) {
+      return cache.get(key) ?? readLocal(key);
+    },
+    setItem(key, value) {
+      cache.set(key, value);
+      writeLocal(key, value);
+      persist(key, value);
+    },
+    removeItem(key) {
+      cache.delete(key);
+      writeLocal(key, null);
+      persist(key, null);
+    },
+  };
+}
+
+/** Raw document stored in the browser (for backups). */
+export async function readBrowserData(): Promise<Database | null> {
+  const db = await openIdb();
+  const raw = (db ? await idbGet(db, DB_KEY) : null) ?? readLocal(DB_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Database;
+  } catch {
+    return null;
+  }
+}
+
+/** Restores a backup document. */
+export async function writeBrowserData(data: unknown): Promise<void> {
+  const db = await openIdb();
+  const raw = JSON.stringify(data);
+  if (db) {
+    await idbSet(db, DB_KEY, raw);
+    await idbSet(db, SEEDED_KEY, '1');
+  }
+  writeLocal(DB_KEY, raw);
+  writeLocal(SEEDED_KEY, '1');
+}
+
+/** Clears both IndexedDB and localStorage copies. */
+export async function destroyBrowserStorage(): Promise<void> {
+  const db = await openIdb();
+  if (db) {
+    await idbDelete(db, DB_KEY);
+    await idbDelete(db, SEEDED_KEY);
+  }
+  writeLocal(DB_KEY, null);
+  writeLocal(SEEDED_KEY, null);
 }
